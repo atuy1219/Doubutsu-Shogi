@@ -1,0 +1,87 @@
+name: Publish Complete Dobutsu Tablebase
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-tablebase.yml"
+      - "tablebase/REBUILD"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: dobutsu-tablebase-release
+  cancel-in-progress: false
+
+jobs:
+  generate-verify-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Fetch pinned BSD-licensed reference solver
+        run: |
+          git clone --no-tags https://github.com/clausecker/dobutsu.git reference-dobutsu
+          git -C reference-dobutsu checkout dfcf133355c80ccc85ae61b9c8ed864b316ac809
+          test "$(git -C reference-dobutsu rev-parse HEAD)" = dfcf133355c80ccc85ae61b9c8ed864b316ac809
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends liblzma-dev
+      - name: Build optimized generator and exhaustive validator
+        run: |
+          make -C reference-dobutsu -j 2 gentb validatetb \
+            CC="gcc -std=c99" RLCFLAGS="" RLLDFLAGS="" RLLDLIBS="" \
+            INTLCFLAGS="" INTLLDFLAGS="" INTLLDLIBS="" \
+            LZMACFLAGS="" LZMALDFLAGS="" LZMALDLIBS="-llzma"
+      - name: Generate complete reference table
+        run: |
+          set -o pipefail
+          mkdir -p ref-result
+          ./reference-dobutsu/gentb -j 2 ref-result/clausecker.tb 2>&1 | tee ref-result/generate.log
+          test "$(stat -c %s ref-result/clausecker.tb)" -eq 167527962
+      - name: Exhaustively validate all stored positions
+        run: |
+          set -o pipefail
+          ./reference-dobutsu/validatetb ref-result/clausecker.tb 2>&1 | tee ref-result/validate.log
+      - name: Wrap the lossless DOBREF01 table
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil, struct
+          source = Path("ref-result/clausecker.tb")
+          target = Path("ref-result/dobutsu.ref")
+          assert source.stat().st_size == 167_527_962
+          with source.open("rb") as src, target.open("wb") as dst:
+              dst.write(b"DOBREF01" + struct.pack("<Q", 167_527_962))
+              shutil.copyfileobj(src, dst)
+          assert target.stat().st_size == 167_527_978
+          PY
+          tail -c +17 ref-result/dobutsu.ref | cmp - ref-result/clausecker.tb
+          echo "95936ff86f6cc4958e39e8d98bc82fef304315985ce34a8bb26602f4d89acabb  ref-result/dobutsu.ref" | sha256sum --check
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run Rust regression tests
+        run: cargo test --all-features --manifest-path engine/Cargo.toml
+      - name: Verify C table with the Rust reader
+        run: cargo run --release --bin verify-reference --manifest-path engine/Cargo.toml -- ref-result/dobutsu.ref
+      - name: Compress the verified table for APK embedding
+        run: |
+          gzip -9 -n -c ref-result/dobutsu.ref > dobutsu.ref.gz
+          gzip -t dobutsu.ref.gz
+          test "$(gzip -dc dobutsu.ref.gz | wc -c)" -eq 167527978
+      - name: Publish tablebase release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view tablebase-v1 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload tablebase-v1 dobutsu.ref.gz --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create tablebase-v1 dobutsu.ref.gz \
+              --title "Complete Dobutsu Shogi WDL/DTM Tablebase" \
+              --notes "Exhaustively generated and validated DOBREF01 table. Raw size: 167,527,978 bytes. SHA-256: 95936ff86f6cc4958e39e8d98bc82fef304315985ce34a8bb26602f4d89acabb. The Rust reader independently verifies the reference table." \
+              --target "$GITHUB_SHA" --repo "$GITHUB_REPOSITORY"
+          fi
+          gh workflow run build-dobutsu-eval.yml --ref main --repo "$GITHUB_REPOSITORY"
