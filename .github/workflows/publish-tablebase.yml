@@ -68,17 +68,18 @@ jobs:
       - name: Store the verified tablebase in the source tree
         run: |
           mkdir -p app/src/main/assets
-          gzip -9 -n -c ref-result/dobutsu.ref > app/src/main/assets/dobutsu.ref.gz
-          gzip -t app/src/main/assets/dobutsu.ref.gz
-          test "$(gzip -dc app/src/main/assets/dobutsu.ref.gz | wc -c)" -eq 167527978
-          actual="$(gzip -dc app/src/main/assets/dobutsu.ref.gz | sha256sum | cut -d' ' -f1)"
+          gzip -9 -n -c ref-result/dobutsu.ref > app/src/main/assets/dobutsu.tablebase
+          gzip -t app/src/main/assets/dobutsu.tablebase
+          test "$(gzip -dc app/src/main/assets/dobutsu.tablebase | wc -c)" -eq 167527978
+          actual="$(gzip -dc app/src/main/assets/dobutsu.tablebase | sha256sum | cut -d' ' -f1)"
           test "$actual" = "95936ff86f6cc4958e39e8d98bc82fef304315985ce34a8bb26602f4d89acabb"
-          test "$(stat -c %s app/src/main/assets/dobutsu.ref.gz)" -lt 100000000
+          test "$(stat -c %s app/src/main/assets/dobutsu.tablebase)" -lt 100000000
       - name: Commit the fixed tablebase to main
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f app/src/main/assets/dobutsu.ref.gz
+          git rm -f --ignore-unmatch app/src/main/assets/dobutsu.ref.gz
+          git add -f app/src/main/assets/dobutsu.tablebase
           if git diff --cached --quiet; then
             echo "The committed tablebase is already current."
           else
