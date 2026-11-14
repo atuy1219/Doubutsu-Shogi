@@ -11,8 +11,8 @@ android {
         applicationId = "com.atuy.dobutsueval"
         minSdk = 28
         targetSdk = 36
-        versionCode = 24
-        versionName = "0.7.2"
+        versionCode = 25
+        versionName = "0.8.0"
         ndk { abiFilters += listOf("arm64-v8a") }
         externalNativeBuild {
             cmake { cppFlags += listOf("-std=c++20", "-Wall", "-Wextra", "-Werror=return-type") }
@@ -26,6 +26,9 @@ android {
     externalNativeBuild {
         cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" }
     }
+    androidResources {
+        noCompress += "gz"
+    }
     packaging {
         jniLibs { useLegacyPackaging = true }
     }
@@ -33,4 +36,17 @@ android {
 
 dependencies {
     compileOnly("io.github.libxposed:api:102.0.0")
+}
+
+val verifyBundledTablebase by tasks.registering {
+    val tablebase = layout.projectDirectory.file("src/main/assets/dobutsu.ref.gz").asFile
+    doLast {
+        check(tablebase.isFile && tablebase.length() > 20_000_000L) {
+            "The complete verified tablebase is required: app/src/main/assets/dobutsu.ref.gz"
+        }
+    }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(verifyBundledTablebase)
 }
