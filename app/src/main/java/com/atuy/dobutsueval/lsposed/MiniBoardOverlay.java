@@ -118,29 +118,29 @@ public final class MiniBoardOverlay {
         return out.toString();
     }
 
-    private static void prepareBundledTablebase(Activity activity) {
-        File table = new File(activity.getFilesDir(), "dobutsu.ref");
+    private static void setNativeTablebasePath(File table) {
         try {
             nativeSetTablebasePath(table.getAbsolutePath());
         } catch (UnsatisfiedLinkError error) {
             Log.e(TAG, "Native tablebase path setter is unavailable", error);
         }
+    }
 
+    private static void prepareBundledTablebase(Activity activity) {
+        File table = new File(activity.getFilesDir(), "dobutsu.ref");
         if (!TABLEBASE_INSTALLING.compareAndSet(false, true)) return;
 
         final String apkPath = moduleApkPath;
-        if (apkPath == null || apkPath.isEmpty()) {
-            TABLEBASE_INSTALLING.set(false);
-            Log.e(TAG, "Module APK path is unavailable; exact tablebase cannot be installed");
-            return;
-        }
-
         Thread installer = new Thread(() -> {
             File temporary = new File(table.getParentFile(), "dobutsu.ref.installing");
             try {
                 if (isVerifiedTablebase(table)) {
+                    setNativeTablebasePath(table);
                     Log.i(TAG, "Existing bundled WDL/DTM tablebase verified");
                     return;
+                }
+                if (apkPath == null || apkPath.isEmpty()) {
+                    throw new IOException("Module APK path is unavailable");
                 }
                 if (!table.getParentFile().isDirectory() &&
                         !table.getParentFile().mkdirs()) {
@@ -189,6 +189,7 @@ public final class MiniBoardOverlay {
                     throw new IOException("Cannot atomically install verified tablebase");
                 }
 
+                setNativeTablebasePath(table);
                 Log.i(TAG, "Bundled exact WDL/DTM tablebase installed: " +
                         table.length() + " bytes");
             } catch (IOException | NoSuchAlgorithmException | RuntimeException error) {
