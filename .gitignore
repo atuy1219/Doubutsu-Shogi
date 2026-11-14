@@ -16,3 +16,6 @@ full-table/
 *.tbx
 *.dense
 *.ref
+reference-dobutsu/
+app/src/main/assets/dobutsu.ref.gz
+dobutsu.ref.gz
