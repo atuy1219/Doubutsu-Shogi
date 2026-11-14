@@ -1,24 +1,6 @@
 name: Build Dobutsu Eval Overlay
 
 on:
-  push:
-    paths:
-      - "app/**"
-      - "engine/**"
-      - "build.gradle.kts"
-      - "settings.gradle.kts"
-      - "gradle.properties"
-      - "gradle/wrapper/**"
-      - ".github/workflows/build-dobutsu-eval.yml"
-  pull_request:
-    paths:
-      - "app/**"
-      - "engine/**"
-      - "build.gradle.kts"
-      - "settings.gradle.kts"
-      - "gradle.properties"
-      - "gradle/wrapper/**"
-      - ".github/workflows/build-dobutsu-eval.yml"
   workflow_dispatch:
 
 permissions:
@@ -32,6 +14,16 @@ jobs:
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - uses: actions/checkout@v7
+      - name: Download complete verified tablebase
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p app/src/main/assets
+          gh release download tablebase-v1 --repo "$GITHUB_REPOSITORY" \
+            --pattern dobutsu.ref.gz --dir app/src/main/assets
+          gzip -t app/src/main/assets/dobutsu.ref.gz
+          actual="$(gzip -dc app/src/main/assets/dobutsu.ref.gz | sha256sum | cut -d' ' -f1)"
+          test "$actual" = "95936ff86f6cc4958e39e8d98bc82fef304315985ce34a8bb26602f4d89acabb"
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -83,6 +75,6 @@ jobs:
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
         with:
-          name: DobutsuEvalOverlay-LSPosed102-arm64-debug
+          name: DobutsuEvalOverlay-arm64-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
