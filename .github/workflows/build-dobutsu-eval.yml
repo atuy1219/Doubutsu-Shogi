@@ -1,4 +1,4 @@
-name: Build Dobutsu Eval Overlay (LSPosed API 102)
+name: Build Dobutsu Eval Overlay
 
 on:
   push:
