@@ -42,7 +42,7 @@ val verifyBundledTablebase by tasks.registering {
     val tablebase = layout.projectDirectory.file("src/main/assets/dobutsu.tablebase").asFile
     doLast {
         check(tablebase.isFile && tablebase.length() > 20_000_000L) {
-            "The complete verified tablebase is required: app/src/main/assets/dobutsu.ref.gz"
+            "The complete verified tablebase is required: app/src/main/assets/dobutsu.tablebase"
         }
     }
 }
