@@ -55,7 +55,7 @@ WDL/DTM values are from the side-to-move perspective. The graph sign is from the
 
 ## Generation and verification
 
-- `.github/workflows/publish-tablebase.yml` is a manual-only regeneration workflow; ordinary APK builds do not run the generator.
+- `.github/workflows/publish-tablebase.yml` runs only when explicitly triggered by changing `tablebase/REBUILD`; ordinary APK builds do not run the generator.
 - The compressed tablebase is committed to Git after C exhaustive validation and Rust compatibility verification.
 - Rust tests and `verify-reference` check the file envelope, ownership-index mapping, initial-position result and the 173-ply omitted-class witness.
 
