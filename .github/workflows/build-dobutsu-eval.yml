@@ -119,7 +119,7 @@ jobs:
         run: |
           apk="app/build/outputs/apk/debug/app-debug.apk"
           test "$(stat -c %s "$apk")" -gt 20000000
-          entry="$(unzip -Z1 "$apk" | grep -E '(^|/)dobutsu\\.ref\\.gz$' | head -n1)"
+          entry="$(unzip -Z1 "$apk" | grep -E '(^|/)dobutsu\.ref\.gz$' | head -n1)"
           test -n "$entry"
           test "$entry" = "assets/dobutsu.ref.gz"
           unzip -p "$apk" "$entry" | gzip -t
