@@ -27,7 +27,7 @@ android {
         cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" }
     }
     androidResources {
-        noCompress += "tablebase"
+        noCompress += "gz"
     }
     packaging {
         jniLibs { useLegacyPackaging = true }
@@ -39,7 +39,7 @@ dependencies {
 }
 
 val verifyBundledTablebase by tasks.registering {
-    val tablebase = layout.projectDirectory.file("src/main/assets/dobutsu.tablebase").asFile
+    val tablebase = layout.projectDirectory.file("src/main/assets/dobutsu.ref.gz").asFile
     doLast {
         check(tablebase.isFile && tablebase.length() > 20_000_000L) {
             "The complete verified tablebase is required: app/src/main/assets/dobutsu.ref.gz"
