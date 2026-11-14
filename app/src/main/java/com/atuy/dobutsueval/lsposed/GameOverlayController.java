@@ -103,42 +103,6 @@ public final class GameOverlayController {
      * The score is from Get_AI_Score, and the second value is Get_Game_Score
      * (diagnostic). Neither score has a verified player-side perspective yet.
      */
-    public static void onNativeCommittedScore(int aiScore, int uiTurn, int gameScore) {
-        synchronized (LOCK) {
-            if (source != 6) {
-                SCORES.clear();
-                GAME_SCORES.clear();
-                MOVE_INDEXES.clear();
-                sampleEpoch++;
-                firstSampleId=0;
-                nextSampleId=0;
-                source=6;
-            }
-            // A game-supplied, completed turn number is mandatory.
-            // Never insert an unlabeled observation or use hook-call count
-            // as a fallback. Keys are unique and sorted chronologically.
-            if(uiTurn<=0 || uiTurn>10000) return;
-            int position=java.util.Collections.binarySearch(MOVE_INDEXES,uiTurn);
-            if(position>=0) {
-                SCORES.set(position,aiScore);
-                GAME_SCORES.set(position,gameScore);
-            } else {
-                int insertion=-position-1;
-                MOVE_INDEXES.add(insertion,uiTurn);
-                SCORES.add(insertion,aiScore);
-                GAME_SCORES.add(insertion,gameScore);
-                nextSampleId++;
-                if(SCORES.size()>MAX_POINTS){
-                    SCORES.remove(0);
-                    GAME_SCORES.remove(0);
-                    MOVE_INDEXES.remove(0);
-                    firstSampleId++;
-                }
-            }
-        }
-        MAIN.post(() -> { if(graph!=null)graph.invalidate(); });
-    }
-
     /** Called by JNI on the game's new-battle/reset path, not Activity.onResume. */
     public static void onNativeNewMatch(int trigger) {
         synchronized (LOCK) {
