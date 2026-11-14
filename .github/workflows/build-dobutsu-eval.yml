@@ -17,7 +17,6 @@ on:
       - "settings.gradle.kts"
       - "gradle.properties"
       - "gradle/wrapper/**"
-      - ".github/workflows/build-dobutsu-eval.yml"
   workflow_run:
     workflows: ["Publish Complete Dobutsu Tablebase"]
     types: [completed]
@@ -42,13 +41,13 @@ jobs:
           if [ ! -s app/src/main/assets/dobutsu.tablebase ]; then
             git fetch --no-tags origin main
             mkdir -p app/src/main/assets
-            git show origin/main:app/src/main/assets/dobutsu.ref.gz > app/src/main/assets/dobutsu.ref.gz
+            git show origin/main:app/src/main/assets/dobutsu.tablebase > app/src/main/assets/dobutsu.tablebase
           fi
       - name: Verify source tablebase
         run: |
-          test "$(stat -c %s app/src/main/assets/dobutsu.ref.gz)" -lt 100000000
-          gzip -t app/src/main/assets/dobutsu.ref.gz
-          actual="$(gzip -dc app/src/main/assets/dobutsu.ref.gz | sha256sum | cut -d' ' -f1)"
+          test "$(stat -c %s app/src/main/assets/dobutsu.tablebase)" -lt 100000000
+          gzip -t app/src/main/assets/dobutsu.tablebase
+          actual="$(gzip -dc app/src/main/assets/dobutsu.tablebase | sha256sum | cut -d' ' -f1)"
           test "$actual" = "95936ff86f6cc4958e39e8d98bc82fef304315985ce34a8bb26602f4d89acabb"
       - uses: actions/setup-java@v6
         with:
