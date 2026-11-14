@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: dobutsu-tablebase-release
@@ -66,15 +66,23 @@ jobs:
         run: cargo test --all-features --manifest-path engine/Cargo.toml
       - name: Verify C table with the Rust reader
         run: cargo run --release --bin verify-reference --manifest-path engine/Cargo.toml -- ref-result/dobutsu.ref
-      - name: Compress the verified table for APK embedding
+      - name: Store the verified tablebase in the source tree
         run: |
-          gzip -9 -n -c ref-result/dobutsu.ref > dobutsu.ref.gz
-          gzip -t dobutsu.ref.gz
-          test "$(gzip -dc dobutsu.ref.gz | wc -c)" -eq 167527978
-      - name: Upload verified tablebase artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: dobutsu-tablebase-verified
-          path: dobutsu.ref.gz
-          if-no-files-found: error
-          retention-days: 90
+          mkdir -p app/src/main/assets
+          gzip -9 -n -c ref-result/dobutsu.ref > app/src/main/assets/dobutsu.ref.gz
+          gzip -t app/src/main/assets/dobutsu.ref.gz
+          test "$(gzip -dc app/src/main/assets/dobutsu.ref.gz | wc -c)" -eq 167527978
+          actual="$(gzip -dc app/src/main/assets/dobutsu.ref.gz | sha256sum | cut -d' ' -f1)"
+          test "$actual" = "95936ff86f6cc4958e39e8d98bc82fef304315985ce34a8bb26602f4d89acabb"
+          test "$(stat -c %s app/src/main/assets/dobutsu.ref.gz)" -lt 100000000
+      - name: Commit the fixed tablebase to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/assets/dobutsu.ref.gz
+          if git diff --cached --quiet; then
+            echo "The committed tablebase is already current."
+          else
+            git commit -m "Add complete exact Dobutsu tablebase"
+            git push origin HEAD:main
+          fi
