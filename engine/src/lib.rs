@@ -118,43 +118,6 @@ impl Position {
         Ok(Self{cells,hands:inhand,side_to_move:side})
     }
 
-    /// Small, independent, deterministic baseline. Neither WDL nor the old
-    /// Get_AI_Score cache. A correct exact result requires a tablebase hit.
-    pub fn material_score(&self) -> i32 {
-        // Capture of either lion is a decisive, independently observable
-        // terminal event; do not display a small material score in that case.
-        if self.cells.iter().all(|&p|p!=LION as i8) {return -2000;}
-        if self.cells.iter().all(|&p|p!=-(LION as i8)) {return 2000;}
-        // The Try result can be recognized without guessing whose turn it is.
-        for (square,&piece) in self.cells.iter().enumerate() {
-            if piece==LION as i8 && square<3 &&
-               !self.is_attacked(square,OPPONENT) {return 2000;}
-            if piece==-(LION as i8) && square>=9 &&
-               !self.is_attacked(square,PLAYER) {return -2000;}
-        }
-        let values=[0,280,280,120,350];
-        let mut sum=0;
-        for (i,&piece) in self.cells.iter().enumerate() {
-            if piece==EMPTY {continue;}
-            let kind=piece.unsigned_abs() as usize;
-            let side=if piece>0 {PLAYER} else {OPPONENT};
-            let row=i/3;
-            let col=i%3;
-            let center=if col==1 {6} else {0};
-            let forward=if side==PLAYER {3-row} else {row};
-            let advancement=if kind==CHICK as usize {forward as i32*10} else {0};
-            let score=values[kind-1]+center+advancement;
-            sum+=if side==PLAYER {score} else {-score};
-        }
-        for side in 0..2 {
-            let hand_score=self.hands[side][0] as i32*280+
-                self.hands[side][1] as i32*280+
-                self.hands[side][2] as i32*120;
-            sum+=if side==PLAYER {hand_score} else {-hand_score};
-        }
-        sum.clamp(-1999,1999)
-    }
-
     pub fn board_fingerprint(&self) -> u64 {
         // Stable FNV-1a across Android, Linux and compiler versions.
         let mut hash=0xcbf29ce484222325u64;
@@ -533,26 +496,6 @@ pub struct Move{
     pub drop_kind:Option<u8>,
 }
 
-/// C ABI for the Android native hook. Never unwrap or panic across FFI.
-#[no_mangle]
-pub extern "C" fn dobutsu_evaluate(
-    board:*const c_int,hands:*const c_int,hand_len:usize,side_to_move:c_int
-)->c_int{
-    if board.is_null() || hand_len>64 ||
-       (hand_len!=0 && hands.is_null()) {return INVALID;}
-    let side=match side_to_move {-1=>None,0=>Some(PLAYER),1=>Some(OPPONENT),_=>return INVALID};
-    // SAFETY: caller validates both regions as readable for the requested
-    // length. The C ABI cannot validate pointers supplied by a hostile caller.
-    let (b,h)=unsafe {
-        (core::slice::from_raw_parts(board,CELLS),
-         if hand_len==0 {&[][..]} else{core::slice::from_raw_parts(hands,hand_len)})
-    };
-    match Position::from_game(b,h,side) {
-        Ok(pos)=>pos.material_score(),
-        Err(_)=>INVALID,
-    }
-}
-
 /// Probe an externally generated, independently verified, COMPLETE
 /// DOBUTB03 table. This never uses the heuristic fallback and returns INVALID
 /// on unknown side-to-move, file omission, or missing/corrupt position.
@@ -741,13 +684,11 @@ mod tests {
     ];
     #[test] fn initial_position_is_valid() {
         let p=Position::from_game(&INITIAL,&[],Some(PLAYER)).unwrap();
-        assert_eq!(p.material_score(),0);
         assert!(p.moves().len()>0);
         assert!(p.key().is_some());
     }
     #[test] fn pre_game_all_zero_is_not_a_board(){
         assert!(Position::from_game(&[0;12],&[],None).is_err());
-        assert_eq!(dobutsu_evaluate([0;12].as_ptr(),core::ptr::null(),0,-1),INVALID);
     }
     #[test] fn zero_is_a_lion_and_minus_one_is_empty(){
         assert_eq!(decode_piece(0).unwrap(),Some((PLAYER,LION)));
@@ -768,7 +709,6 @@ mod tests {
         let mut cells=INITIAL;
         cells[1]=-1;
         let p=Position::from_game(&cells,&[],Some(PLAYER)).unwrap();
-        assert_eq!(p.material_score(),2000);
         assert_eq!(p.terminal(),Some(retrograde::Outcome::Win));
         let q=Position::from_game(&cells,&[],Some(OPPONENT)).unwrap();
         assert_eq!(q.terminal(),Some(retrograde::Outcome::Loss));
