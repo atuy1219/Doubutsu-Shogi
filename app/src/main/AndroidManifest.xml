@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries><package android:name="jp.co.gmode.dobutsushogi" /></queries>
+    <application
+        android:label="どうぶつしょうぎ評価グラフ"
+        android:description="@string/lsposed_description"
+        android:allowBackup="false"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+    </application>
+</manifest>

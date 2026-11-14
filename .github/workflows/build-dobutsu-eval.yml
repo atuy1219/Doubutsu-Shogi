@@ -1,0 +1,88 @@
+name: Build Dobutsu Eval Overlay (LSPosed API 102)
+
+on:
+  push:
+    paths:
+      - "app/**"
+      - "engine/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "gradle/wrapper/**"
+      - ".github/workflows/build-dobutsu-eval.yml"
+  pull_request:
+    paths:
+      - "app/**"
+      - "engine/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "gradle/wrapper/**"
+      - ".github/workflows/build-dobutsu-eval.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.6.0"
+      - name: Install Android SDK / NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" --install "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358" "cmake;3.22.1"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Rust engine unit tests
+        run: cargo test --all-features --manifest-path engine/Cargo.toml
+      - name: Exercise offline WDL/DTM generator
+        run: |
+          cargo run --release --features generator --manifest-path engine/Cargo.toml --bin generate -- --terminal-fixture --max-states 1 --output /tmp/dobutsu-terminal-fixture.tb
+          test -s /tmp/dobutsu-terminal-fixture.tb
+      - name: Verify lossless table packing
+        shell: bash
+        run: |
+          cargo build --release --features full-solver --bin pack-full --manifest-path engine/Cargo.toml
+          python3 - <<'PY'
+          from pathlib import Path
+          b = Path('/tmp/dobutsu-terminal-fixture.tb').read_bytes()
+          assert b[:8] == b'DOBUTB01'
+          assert int.from_bytes(b[8:16], 'little') == 1
+          k = int.from_bytes(b[16:32], 'little')
+          assert k < 2**64
+          outcome = b[32]
+          dtm = int.from_bytes(b[33:35], 'little')
+          value = (dtm+1 if outcome == 1 else -(dtm+1)) if outcome != 3 else 32767
+          row = b'DOBUTB02' + (1).to_bytes(8,'little') + k.to_bytes(8,'little') + value.to_bytes(2,'little',signed=True)
+          Path('/tmp/dobutsu-terminal-fixture-v2.tb').write_bytes(row)
+          PY
+          engine/target/release/pack-full /tmp/dobutsu-terminal-fixture-v2.tb /tmp/dobutsu-terminal-fixture.tbx
+          test -s /tmp/dobutsu-terminal-fixture.tbx
+      - name: Cross-compile Rust engine for Android ARM64
+        shell: bash
+        run: |
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$ANDROID_HOME/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android28-clang"
+          test -x "$CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER"
+          cargo build --release --lib --target aarch64-linux-android --manifest-path engine/Cargo.toml
+          test -s engine/target/aarch64-linux-android/release/libdobutsu_solver.a
+      - name: Build debug APK
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DobutsuEvalOverlay-LSPosed102-arm64-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

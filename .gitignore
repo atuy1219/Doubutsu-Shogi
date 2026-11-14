@@ -1,0 +1,18 @@
+.gradle/
+.idea/
+local.properties
+**/build/
+**/target/
+*.iml
+.DS_Store
+
+# Generated tablebases and solver scratch data
+engine/scratch/
+ref-result/
+dense-table/
+full-scratch/
+full-table/
+*.tb
+*.tbx
+*.dense
+*.ref

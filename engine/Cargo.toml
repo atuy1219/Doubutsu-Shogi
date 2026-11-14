@@ -1,0 +1,54 @@
+[package]
+name = "dobutsu-solver"
+version = "0.1.0"
+edition = "2021"
+description = "Standalone Dobutsu Shogi position decoder, rules, WDL retrograde core and tablebase probe"
+publish = false
+
+[lib]
+name = "dobutsu_solver"
+crate-type = ["staticlib", "rlib"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[dependencies]
+memmap2 = { version = "0.9.12", optional = true }
+rayon = { version = "1.10", optional = true }
+
+[features]
+generator = []
+full-solver = ["dep:memmap2"]
+fast-dense-solver = ["dep:rayon"]
+
+[[bin]]
+name = "generate"
+path = "src/bin/generate.rs"
+required-features = ["generator"]
+
+[[bin]]
+name = "solve-full"
+path = "src/bin/solve_full.rs"
+required-features = ["full-solver"]
+
+[[bin]]
+name = "verify-full"
+path = "src/bin/verify_full.rs"
+required-features = ["full-solver"]
+
+[[bin]]
+name = "pack-full"
+path = "src/bin/pack_full.rs"
+required-features = ["full-solver"]
+
+[[bin]]
+name = "solve-dense"
+path = "src/bin/solve_dense.rs"
+required-features = ["fast-dense-solver"]
+
+[[bin]]
+name = "verify-reference"
+path = "src/bin/verify_reference.rs"
