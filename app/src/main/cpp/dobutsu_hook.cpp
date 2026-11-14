@@ -178,7 +178,7 @@ std::atomic<const uint8_t *> g_table_data{nullptr};
 size_t g_table_size=0;
 // 0: key-indexed DOBUTB03; 1: cohort-indexed DOBDENS1/DOBREF01.
 // g_table_data is published only after header and opening-score validation.
-std::string g_table_path="/data/user/0/jp.co.gmode.dobutsushogi/files/dobutsu.ref";
+std::string g_table_path;
 std::atomic<int64_t> g_last_table_attempt_ns{0};
 int32_t g_board_cached[12]{};
 int32_t g_hand_cached[64]{};
@@ -772,6 +772,7 @@ bool load_verified_tablebase() {
     if(current-g_last_table_attempt_ns.load(std::memory_order_acquire)
        <5'000'000'000LL)return false;
     g_last_table_attempt_ns.store(current,std::memory_order_release);
+    if(g_table_path.empty())return false;
 
     const int fd=::open(g_table_path.c_str(),O_RDONLY|O_CLOEXEC);
     if(fd<0)return false;
