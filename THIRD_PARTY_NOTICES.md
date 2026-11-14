@@ -19,3 +19,5 @@ The original MIT license and copyright notice are retained in `engine/src/dense_
 `engine/src/dense_lib/cohort_tables.rs` contains generated tables derived from `poscode.c` in [clausecker/dobutsu](https://github.com/clausecker/dobutsu). The reference-generation workflow also fetches a pinned revision of that project at build time; its C source is not vendored here.
 
 The BSD-2-Clause license and copyright notice are retained in `licenses/RobertClausecker-BSD-2-Clause.txt`.
+
+The module APK includes this notice, the root MIT license, and the full third-party MIT and BSD-2-Clause license texts in its assets.
