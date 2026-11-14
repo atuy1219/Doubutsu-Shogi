@@ -9,12 +9,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  actions: write
+  contents: read
 
 concurrency:
   group: dobutsu-tablebase-release
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   generate-verify-publish:
@@ -72,16 +71,10 @@ jobs:
           gzip -9 -n -c ref-result/dobutsu.ref > dobutsu.ref.gz
           gzip -t dobutsu.ref.gz
           test "$(gzip -dc dobutsu.ref.gz | wc -c)" -eq 167527978
-      - name: Publish tablebase release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if gh release view tablebase-v1 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload tablebase-v1 dobutsu.ref.gz --clobber --repo "$GITHUB_REPOSITORY"
-          else
-            gh release create tablebase-v1 dobutsu.ref.gz \
-              --title "Complete Dobutsu Shogi WDL/DTM Tablebase" \
-              --notes "Exhaustively generated and validated DOBREF01 table. Raw size: 167,527,978 bytes. SHA-256: 95936ff86f6cc4958e39e8d98bc82fef304315985ce34a8bb26602f4d89acabb. The Rust reader independently verifies the reference table." \
-              --target "$GITHUB_SHA" --repo "$GITHUB_REPOSITORY"
-          fi
-          gh workflow run build-dobutsu-eval.yml --ref main --repo "$GITHUB_REPOSITORY"
+      - name: Upload verified tablebase artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: dobutsu-tablebase-verified
+          path: dobutsu.ref.gz
+          if-no-files-found: error
+          retention-days: 90
