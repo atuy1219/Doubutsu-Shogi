@@ -93,30 +93,10 @@ public final class GameOverlayController {
     }
 
     // Called by JNI from the game's IL2CPP thread; never mutate Views here.
-    public static void onNativeScore(int value, int which) {
-        synchronized (LOCK) {
-            if (which != source) {
-                SCORES.clear(); // Do not mix score scales of different methods.
-                GAME_SCORES.clear();
-                MOVE_INDEXES.clear();
-                sampleEpoch++;
-                firstSampleId = 0;
-                nextSampleId = 0;
-                source = which;
-            }
-            SCORES.add(value);
-            GAME_SCORES.add(Integer.MIN_VALUE);
-            MOVE_INDEXES.add(-1);
-            nextSampleId++;
-            if (SCORES.size() > MAX_POINTS) {
-                SCORES.remove(0);
-                GAME_SCORES.remove(0);
-                MOVE_INDEXES.remove(0);
-                firstSampleId++;
-            }
-        }
-        MAIN.post(() -> { if (graph != null) graph.invalidate(); });
-    }
+    // Raw game/AI scores are not perfect-play evaluations and are never shown.
+    public static void onNativeScore(int value, int which) { }
+
+    public static void onNativeCommittedScore(int aiScore, int uiTurn, int gameScore) { }
 
     /**
      * Captures one point per observed ShogiControl.Cmd_MakeMove command.
@@ -330,8 +310,7 @@ public final class GameOverlayController {
 
             // A raw AI getter is not a solved-position evaluation. Keep the
             // metric explicit instead of claiming +2 means actual advantage.
-            final String headline=snapshot.isEmpty() ? "データ待機中" :
-                    source == 6 ? "AI探索値" : "ゲーム内部スコア";
+            final String headline="完全解析 WDL/DTM";
             p.setTypeface(android.graphics.Typeface.DEFAULT);
             p.setTextSize(11f*density);
             p.setColor(snapshot.isEmpty()?Color.rgb(210,220,234):lastColor);
