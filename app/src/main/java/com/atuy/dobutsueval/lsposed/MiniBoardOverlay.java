@@ -1,6 +1,7 @@
 package com.atuy.dobutsueval.lsposed;
 
 import android.app.Activity;
+import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -19,9 +20,25 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import java.lang.ref.WeakReference;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 /**
  * Single LSPosed in-game overlay. Graph is open by default; 3x4 mini-board
@@ -37,6 +54,11 @@ public final class MiniBoardOverlay {
     private static final Object LOCK = new Object();
     private static final int UNKNOWN = Integer.MIN_VALUE;
     private static final int MAX_HISTORY = 220;
+    private static final long TABLEBASE_BYTES = 167_527_978L;
+    private static final String TABLEBASE_SHA256 =
+            "95936ff86f6cc4958e39e8d98bc82fef304315985ce34a8bb26602f4d89acabb";
+    private static final AtomicBoolean TABLEBASE_INSTALLING = new AtomicBoolean(false);
+    private static volatile String moduleApkPath;
     private static final int GREEN = Color.rgb(84, 222, 164);
     private static final int RED = Color.rgb(251, 136, 121);
     private static final int PAPER = Color.rgb(242, 226, 186);
@@ -72,6 +94,125 @@ public final class MiniBoardOverlay {
 
     private MiniBoardOverlay() {}
 
+    private static native void nativeSetTablebasePath(String path);
+
+    public static void setModuleApkPath(String path) {
+        moduleApkPath = path;
+    }
+
+    private static boolean hasInstalledTablebase(File table) {
+        if (!table.isFile() || table.length() != TABLEBASE_BYTES) return false;
+        File marker = new File(table.getParentFile(), "dobutsu.ref.sha256");
+        if (!marker.isFile()) return false;
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                new FileInputStream(marker), StandardCharsets.US_ASCII))) {
+            return TABLEBASE_SHA256.equals(reader.readLine());
+        } catch (IOException error) {
+            return false;
+        }
+    }
+
+    private static String hex(byte[] bytes) {
+        StringBuilder out = new StringBuilder(bytes.length * 2);
+        for (byte value : bytes) out.append(String.format("%02x", value & 0xff));
+        return out.toString();
+    }
+
+    private static void prepareBundledTablebase(Activity activity) {
+        File table = new File(activity.getFilesDir(), "dobutsu.ref");
+        try {
+            nativeSetTablebasePath(table.getAbsolutePath());
+        } catch (UnsatisfiedLinkError error) {
+            Log.e(TAG, "Native tablebase path setter is unavailable", error);
+        }
+
+        if (hasInstalledTablebase(table) ||
+                !TABLEBASE_INSTALLING.compareAndSet(false, true)) return;
+
+        final String apkPath = moduleApkPath;
+        if (apkPath == null || apkPath.isEmpty()) {
+            TABLEBASE_INSTALLING.set(false);
+            Log.e(TAG, "Module APK path is unavailable; exact tablebase cannot be installed");
+            return;
+        }
+
+        Thread installer = new Thread(() -> {
+            File temporary = new File(table.getParentFile(), "dobutsu.ref.installing");
+            try {
+                if (hasInstalledTablebase(table)) return;
+                if (!table.getParentFile().isDirectory() &&
+                        !table.getParentFile().mkdirs()) {
+                    throw new IOException("Cannot create game files directory");
+                }
+                if (temporary.exists() && !temporary.delete()) {
+                    throw new IOException("Cannot remove stale tablebase temporary file");
+                }
+
+                MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                long total = 0;
+                try (ZipFile moduleApk = new ZipFile(apkPath)) {
+                    ZipEntry asset = moduleApk.getEntry("assets/dobutsu.ref.gz");
+                    if (asset == null) throw new IOException("Bundled tablebase asset is missing");
+                    try (InputStream compressed = new BufferedInputStream(
+                                moduleApk.getInputStream(asset));
+                         GZIPInputStream input = new GZIPInputStream(compressed);
+                         FileOutputStream fileOutput = new FileOutputStream(temporary);
+                         BufferedOutputStream output = new BufferedOutputStream(
+                                fileOutput, 1024 * 1024)) {
+                        byte[] buffer = new byte[1024 * 1024];
+                        int read;
+                        while ((read = input.read(buffer)) != -1) {
+                            total += read;
+                            if (total > TABLEBASE_BYTES) {
+                                throw new IOException("Tablebase exceeds expected size");
+                            }
+                            digest.update(buffer, 0, read);
+                            output.write(buffer, 0, read);
+                        }
+                        output.flush();
+                        fileOutput.getFD().sync();
+                    }
+                }
+
+                String actualHash = hex(digest.digest());
+                if (total != TABLEBASE_BYTES || !TABLEBASE_SHA256.equals(actualHash)) {
+                    throw new IOException("Tablebase integrity check failed: bytes=" +
+                            total + " sha256=" + actualHash);
+                }
+
+                if (table.exists() && !table.delete()) {
+                    throw new IOException("Cannot replace previous tablebase");
+                }
+                if (!temporary.renameTo(table)) {
+                    throw new IOException("Cannot atomically install verified tablebase");
+                }
+
+                File marker = new File(table.getParentFile(), "dobutsu.ref.sha256");
+                File markerTemporary = new File(table.getParentFile(), "dobutsu.ref.sha256.tmp");
+                try (FileOutputStream output = new FileOutputStream(markerTemporary)) {
+                    output.write((TABLEBASE_SHA256 + "\n").getBytes(StandardCharsets.US_ASCII));
+                    output.flush();
+                    output.getFD().sync();
+                }
+                if (marker.exists() && !marker.delete()) {
+                    throw new IOException("Cannot replace tablebase integrity marker");
+                }
+                if (!markerTemporary.renameTo(marker)) {
+                    throw new IOException("Cannot install tablebase integrity marker");
+                }
+                Log.i(TAG, "Bundled exact WDL/DTM tablebase installed: " +
+                        table.length() + " bytes");
+            } catch (IOException | NoSuchAlgorithmException | RuntimeException error) {
+                if (temporary.exists()) temporary.delete();
+                Log.e(TAG, "Bundled exact tablebase installation failed", error);
+            } finally {
+                TABLEBASE_INSTALLING.set(false);
+            }
+        }, "Dobutsu-Tablebase-Install");
+        installer.setPriority(Thread.NORM_PRIORITY - 1);
+        installer.start();
+    }
+
     private static int dp(Activity a, float value) {
         return Math.round(value * a.getResources().getDisplayMetrics().density);
     }
@@ -84,6 +225,7 @@ public final class MiniBoardOverlay {
     }
 
     public static void onResumed(Activity activity) {
+        prepareBundledTablebase(activity);
         MAIN.post(() -> {
             if (activity.isFinishing() || activity.isDestroyed()) return;
             if (active.get() != activity) detach();
@@ -263,7 +405,8 @@ public final class MiniBoardOverlay {
     public static void onNativeBoard(int[] rawBoard, int[] rawHands,
                                      int[] ignoredConstants, int score,
                                      int completedMove, int sideToMove, int isExact) {
-        if (rawBoard == null || rawBoard.length != 12 || score == UNKNOWN) return;
+        if (isExact != 1 || rawBoard == null || rawBoard.length != 12 ||
+                score == UNKNOWN) return;
         synchronized (LOCK) {
             boolean boardChanged = !sameCanonicalBoard(board,rawBoard) ||
                                    !sameHandContents(hands,rawHands);
@@ -406,7 +549,7 @@ public final class MiniBoardOverlay {
             p.setTypeface(Typeface.DEFAULT);
             p.setTextSize(10 * d);
             p.setColor(Color.rgb(167, 184, 203));
-            c.drawText(isExact ? "完全解析 WDL/DTM" : "Rust簡易評価", l + 4 * d, 17 * d, p);
+            c.drawText("完全解析 WDL/DTM", l + 4 * d, 17 * d, p);
 
             String val = ready ? signed(latest) : "--";
             p.setTypeface(Typeface.DEFAULT_BOLD);
@@ -434,9 +577,9 @@ public final class MiniBoardOverlay {
                 p.setTextSize(11 * d);
                 p.setColor(Color.rgb(196, 211, 227));
                 String message;
-                if(!ready)message="対局開始待ち";
-                else if(verifiedCompletedMove<0)message="ゲーム内手数の検証待ち";
-                else message="着手待ち";
+                if(!ready)message="完全解析結果待ち";
+                else if(verifiedCompletedMove<0)message="手数確認中";
+                else message="次の完全解析結果待ち";
                 c.drawText(message,l+9*d,mid+19*d,p);
                 dotsX = dotsY = new float[0];
                 return;
