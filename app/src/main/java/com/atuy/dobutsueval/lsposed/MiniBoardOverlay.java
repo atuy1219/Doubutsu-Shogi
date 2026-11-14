@@ -152,8 +152,8 @@ public final class MiniBoardOverlay {
                 MessageDigest digest = MessageDigest.getInstance("SHA-256");
                 long total = 0;
                 try (ZipFile moduleApk = new ZipFile(apkPath)) {
-                    ZipEntry asset = moduleApk.getEntry("assets/dobutsu.tablebase");
-                    if (asset == null) throw new IOException("Bundled tablebase asset is missing");
+                    ZipEntry asset = moduleApk.getEntry("assets/dobutsu.ref");
+                    if (asset == null) throw new IOException("Bundled tablebase asset is missing: assets/dobutsu.ref");
                     try (InputStream compressed = new BufferedInputStream(
                                 moduleApk.getInputStream(asset));
                          GZIPInputStream input = new GZIPInputStream(compressed);
