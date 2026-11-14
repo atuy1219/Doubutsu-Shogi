@@ -26,14 +26,14 @@ The IL2CPP fields, RVAs and ARM64 ABI are game-version-specific. Keep pointer an
 
 ## Exact-only tablebase
 
-The module APK bundles the complete C reference table as `assets/dobutsu.ref.gz`. The release asset is generated from the pinned BSD-licensed reference solver, exhaustively validated by its C validator, and independently checked by the Rust reader before publication.
+The module APK bundles the complete C reference table as `assets/dobutsu.ref.gz`. The `Publish Complete Dobutsu Tablebase` workflow generates it from the pinned BSD-licensed reference solver, exhaustively validates it with the C validator, independently checks it with the Rust reader, and uploads a reusable Actions artifact. The APK build downloads that verified artifact.
 
 On the first target-game Activity resume, the module streams the gzip asset from its own installed APK into the game's private files directory as `dobutsu.ref`. It verifies the decompressed byte count and SHA-256 before atomically installing the file. No manual file copy or separate download is required.
 
 - Raw size: `167,527,978` bytes
 - SHA-256: `95936ff86f6cc4958e39e8d98bc82fef304315985ce34a8bb26602f4d89acabb`
 - Runtime path: `/data/user/0/jp.co.gmode.dobutsushogi/files/dobutsu.ref`
-- Release asset: `tablebase-v1/dobutsu.ref.gz`
+- Actions artifact: `dobutsu-tablebase-verified` (90-day retention)
 
 The native hook accepts only the complete `DOBREF01` format, validates its header, length and initial-position score, then maps it read-only. The module has no material-score, heuristic, raw game-score or AI-score fallback. A graph point is sent only when the side to move is calibrated and the exact WDL/DTM lookup succeeds. Until then, the graph remains empty.
 
