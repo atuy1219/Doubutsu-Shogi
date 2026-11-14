@@ -24,19 +24,18 @@ The overlay is attached to the target game's Activity decor view. It is not show
 
 The IL2CPP fields, RVAs and ARM64 ABI are game-version-specific. Keep pointer and ABI validation in place; bypassing these checks can crash the game process.
 
-## Tablebase lookup
+## Exact-only tablebase
 
-The game process searches its files directory for the first valid table, in this order, and maps it read-only with `mmap`:
+The module APK bundles the complete C reference table as `assets/dobutsu.ref.gz`. The release asset is generated from the pinned BSD-licensed reference solver, exhaustively validated by its C validator, and independently checked by the Rust reader before publication.
 
-1. `dobutsu.ref` (`DOBREF01`)
-2. `dobutsu.dense` (`DOBDENS1`)
-3. `dobutsu.tbx` (`DOBUTB03`)
+On the first target-game Activity resume, the module streams the gzip asset from its own installed APK into the game's private files directory as `dobutsu.ref`. It verifies the decompressed byte count and SHA-256 before atomically installing the file. No manual file copy or separate download is required.
 
-The current APK does not bundle a tablebase. Without a valid table file, the overlay displays the Rust `material_score` baseline and labels it `Rust簡易評価`. This score combines piece values, center occupancy and chick advancement; it is not a full search or WDL/DTM result. The `完全解析 WDL/DTM` label is used only after a tablebase hit. The expected directory is:
+- Raw size: `167,527,978` bytes
+- SHA-256: `95936ff86f6cc4958e39e8d98bc82fef304315985ce34a8bb26602f4d89acabb`
+- Runtime path: `/data/user/0/jp.co.gmode.dobutsushogi/files/dobutsu.ref`
+- Release asset: `tablebase-v1/dobutsu.ref.gz`
 
-```text
-/data/user/0/jp.co.gmode.dobutsushogi/files/
-```
+The native hook accepts only the complete `DOBREF01` format, validates its header, length and initial-position score, then maps it read-only. The module has no material-score, heuristic, raw game-score or AI-score fallback. A graph point is sent only when the side to move is calibrated and the exact WDL/DTM lookup succeeds. Until then, the graph remains empty.
 
 ### `DOBREF01` layout
 
@@ -59,4 +58,4 @@ WDL/DTM values are from the side-to-move perspective. The graph sign is from the
 - C generation and Rust verification are separate jobs. A C-validated artifact is retained if the Rust compatibility check fails.
 - Rust tests and `verify-reference` check the file envelope, ownership-index mapping, initial-position result and the 173-ply omitted-class witness.
 
-Passing tablebase CI does not by itself prove exact compatibility with every game-specific Try/repetition rule, on-device board coordinate, hand-piece mapping or side-to-move calibration.
+The tablebase itself is exhaustively validated and its reference indexing is cross-checked by Rust. Game-side board decoding, hand-piece mapping and side-to-move calibration remain separate integration requirements; the module deliberately suppresses scores whenever those inputs are not verified.
