@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 16
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Fetch pinned BSD-licensed reference C solver
         run: |
           git clone --no-tags https://github.com/clausecker/dobutsu.git reference-dobutsu
@@ -58,7 +58,7 @@ jobs:
           tail -c +17 ref-result/dobutsu.ref | cmp - ref-result/clausecker.tb
           sha256sum ref-result/dobutsu.ref > ref-result/SHA256SUMS
       - name: Preserve C-validated table for Rust verifier
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dobutsu-c-validated-pending-rust
           path: |
@@ -71,7 +71,7 @@ jobs:
           compression-level: 6
       - name: Upload diagnostic logs on C generation failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dobutsu-reference-c-failure-logs
           path: |
@@ -85,12 +85,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Run cross-format index and DTM regression tests
         run: cargo test --all-features --manifest-path engine/Cargo.toml
       - name: Restore C-validated table
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dobutsu-c-validated-pending-rust
           path: ref-result
