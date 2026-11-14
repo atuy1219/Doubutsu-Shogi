@@ -94,6 +94,13 @@ jobs:
           test -s engine/target/aarch64-linux-android/release/libdobutsu_solver.a
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug
+      - name: Verify exact tablebase embedded in APK
+        run: |
+          apk="app/build/outputs/apk/debug/app-debug.apk"
+          test "$(stat -c %s "$apk")" -gt 20000000
+          unzip -p "$apk" assets/dobutsu.ref.gz | gzip -t
+          actual="$(unzip -p "$apk" assets/dobutsu.ref.gz | gzip -dc | sha256sum | cut -d' ' -f1)"
+          test "$actual" = "95936ff86f6cc4958e39e8d98bc82fef304315985ce34a8bb26602f4d89acabb"
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
         with:
