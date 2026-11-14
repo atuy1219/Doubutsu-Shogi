@@ -26,15 +26,15 @@ The IL2CPP fields, RVAs and ARM64 ABI are game-version-specific. Keep pointer an
 
 ## Exact-only tablebase
 
-The repository tracks the complete compressed tablebase at `app/src/main/assets/dobutsu.ref.gz` (about 36 MB, below GitHub's 100 MB per-file limit). The `Publish Complete Dobutsu Tablebase` workflow is only needed to deliberately regenerate it: it uses the pinned BSD-licensed reference solver, exhaustively validates the output with the C validator, independently checks it with the Rust reader, and commits the deterministic gzip file to `main`. Normal APK builds use the checked-in file directly; they do not regenerate or download the tablebase.
+The repository tracks the complete compressed tablebase at `app/src/main/assets/dobutsu.tablebase` (about 36 MB, below GitHub's 100 MB per-file limit). The `Publish Complete Dobutsu Tablebase` workflow is only needed to deliberately regenerate it: it uses the pinned BSD-licensed reference solver, exhaustively validates the output with the C validator, independently checks it with the Rust reader, and commits the deterministic gzip file to `main`. Normal APK builds use the checked-in file directly; they do not regenerate or download the tablebase.
 
 On the first target-game Activity resume, the module streams the gzip asset from its own installed APK into the game's private files directory as `dobutsu.ref`. It verifies the decompressed byte count and SHA-256 before atomically installing the file. No manual file copy or separate download is required.
 
 - Raw size: `167,527,978` bytes
 - SHA-256: `95936ff86f6cc4958e39e8d98bc82fef304315985ce34a8bb26602f4d89acabb`
 - Runtime path: `/data/user/0/jp.co.gmode.dobutsushogi/files/dobutsu.ref`
-- Repository asset: `app/src/main/assets/dobutsu.ref.gz`
-- APK asset path: `assets/dobutsu.ref` (AAPT strips the `.gz` suffix but preserves the gzip stream)
+- Repository asset: `app/src/main/assets/dobutsu.tablebase`
+- APK asset path: `assets/dobutsu.tablebase` (the `.tablebase` extension prevents AAPT's special `.gz` handling)
 
 The native hook accepts only the complete `DOBREF01` format, validates its header, length and initial-position score, then maps it read-only. The module has no material-score, heuristic, raw game-score or AI-score fallback. A graph point is sent only when the side to move is calibrated and the exact WDL/DTM lookup succeeds. Until then, the graph remains empty.
 
