@@ -331,9 +331,7 @@ public final class GameOverlayController {
             // A raw AI getter is not a solved-position evaluation. Keep the
             // metric explicit instead of claiming +2 means actual advantage.
             final String headline=snapshot.isEmpty() ? "データ待機中" :
-                    source == 6 ? "AI探索値（参考）" :
-                    last < 0 ? "自分寄り（暫定）" :
-                    last > 0 ? "相手寄り（暫定）" : "互角付近（暫定）";
+                    source == 6 ? "AI探索値" : "ゲーム内部スコア";
             p.setTypeface(android.graphics.Typeface.DEFAULT);
             p.setTextSize(11f*density);
             p.setColor(snapshot.isEmpty()?Color.rgb(210,220,234):lastColor);
