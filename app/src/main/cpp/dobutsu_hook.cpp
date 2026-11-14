@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstring>
 #include <mutex>
+#include <string>
 #include <dlfcn.h>
 #include <pthread.h>
 #include <unistd.h>
@@ -19,9 +20,6 @@
 #include <sys/stat.h>
 
 // Rust rules/position library: statically linked into libdobutsuhook.so.
-extern "C" int32_t dobutsu_evaluate(const int32_t *,const int32_t *,size_t,int32_t);
-extern "C" int32_t dobutsu_evaluate_table_v3(
-    const uint8_t *,size_t,const int32_t *,const int32_t *,size_t,int32_t);
 extern "C" int32_t dobutsu_evaluate_dense(
     const uint8_t *,size_t,const int32_t *,const int32_t *,size_t,int32_t);
 
@@ -180,7 +178,7 @@ std::atomic<const uint8_t *> g_table_data{nullptr};
 size_t g_table_size=0;
 // 0: key-indexed DOBUTB03; 1: cohort-indexed DOBDENS1/DOBREF01.
 // g_table_data is published only after header and opening-score validation.
-int g_table_format=0;
+std::string g_table_path="/data/user/0/jp.co.gmode.dobutsushogi/files/dobutsu.ref";
 std::atomic<int64_t> g_last_table_attempt_ns{0};
 int32_t g_board_cached[12]{};
 int32_t g_hand_cached[64]{};
@@ -763,7 +761,7 @@ bool read_int_array(void *owner,const void *field,int32_t *out,
     return true;
 }
 
-// The game process maps the external table read-only.
+// The bundled, exhaustively verified C reference table is mapped read-only.
 bool load_verified_tablebase() {
     if(g_table_data.load(std::memory_order_acquire))return true;
     const int64_t current=now_ns();
@@ -774,67 +772,50 @@ bool load_verified_tablebase() {
     if(current-g_last_table_attempt_ns.load(std::memory_order_acquire)
        <5'000'000'000LL)return false;
     g_last_table_attempt_ns.store(current,std::memory_order_release);
-    // Prefer the 167 MB verified C reference; fall back to dense/packed
-    // formats only after strict header, length and opening-score checks.
-    const char *paths[]={
-        "/data/user/0/jp.co.gmode.dobutsushogi/files/dobutsu.ref",
-        "/data/user/0/jp.co.gmode.dobutsushogi/files/dobutsu.dense",
-        "/data/user/0/jp.co.gmode.dobutsushogi/files/dobutsu.tbx"
-    };
+
+    const int fd=::open(g_table_path.c_str(),O_RDONLY|O_CLOEXEC);
+    if(fd<0)return false;
+    struct stat st{};
+    constexpr uint64_t EXPECTED_BYTES=167527978ULL;
+    constexpr uint64_t EXPECTED_COUNT=167527962ULL;
+    if(::fstat(fd,&st)!=0 || !S_ISREG(st.st_mode) ||
+       static_cast<uint64_t>(st.st_size)!=EXPECTED_BYTES) {
+        ::close(fd);
+        __android_log_print(ANDROID_LOG_ERROR,TAG,
+            "Bundled exact tablebase has invalid size: %s",g_table_path.c_str());
+        return false;
+    }
+    const size_t bytes=static_cast<size_t>(st.st_size);
+    void *address=::mmap(nullptr,bytes,PROT_READ,MAP_PRIVATE,fd,0);
+    ::close(fd);
+    if(address==MAP_FAILED)return false;
+    const auto *data=static_cast<const uint8_t *>(address);
+    uint64_t count=0;
+    std::memcpy(&count,data+8,8);
+    const bool valid=std::memcmp(data,"DOBREF01",8)==0 &&
+                     count==EXPECTED_COUNT && bytes==16ULL+count;
+    if(!valid) {
+        ::munmap(address,bytes);
+        __android_log_print(ANDROID_LOG_ERROR,TAG,
+            "Bundled exact tablebase rejected: invalid header or count");
+        return false;
+    }
     const int32_t opening[12]={
         0x23,0x21,0x25,-1,0x27,-1,-1,0x06,-1,0x04,0x00,0x02
     };
-    for(int kind=0;kind<3;kind++){
-        const int fd=::open(paths[kind],O_RDONLY|O_CLOEXEC);
-        if(fd<0)continue;
-        struct stat st{};
-        if(::fstat(fd,&st)!=0 || !S_ISREG(st.st_mode) ||
-           st.st_size<56 ||
-           static_cast<uint64_t>(st.st_size)>4ULL*1024*1024*1024){
-            ::close(fd);
-            continue;
-        }
-        const size_t bytes=static_cast<size_t>(st.st_size);
-        void *address=::mmap(nullptr,bytes,PROT_READ,MAP_PRIVATE,fd,0);
-        ::close(fd);
-        if(address==MAP_FAILED)continue;
-        const auto *data=static_cast<const uint8_t *>(address);
-        uint64_t count=0;
-        std::memcpy(&count,data+8,8);
-        const bool valid=(kind==0)?
-            (std::memcmp(data,"DOBREF01",8)==0 &&
-             count==167527962ULL && bytes==16ULL+count):
-            (kind==1)?
-            (std::memcmp(data,"DOBDENS1",8)==0 &&
-             count==255280704ULL && bytes==16ULL+count):
-            (std::memcmp(data,"DOBUTB03",8)==0 &&
-             count==246803167ULL);
-        if(!valid){
-            ::munmap(address,bytes);
-            __android_log_print(ANDROID_LOG_ERROR,TAG,
-                "Exact tablebase rejected: invalid header, size or count (%s)",
-                paths[kind]);
-            continue;
-        }
-        const int32_t score=(kind<2)?
-            dobutsu_evaluate_dense(data,bytes,opening,nullptr,0,0):
-            dobutsu_evaluate_table_v3(data,bytes,opening,nullptr,0,0);
-        if(score!=-1922){
-            ::munmap(address,bytes);
-            __android_log_print(ANDROID_LOG_ERROR,TAG,
-                "Exact tablebase opening mismatch %d (%s)",score,paths[kind]);
-            continue;
-        }
-        g_table_format=(kind<2)?1:0;
-        g_table_size=bytes;
-        ::madvise(address,bytes,MADV_RANDOM);
-        g_table_data.store(data,std::memory_order_release);
-        __android_log_print(ANDROID_LOG_INFO,TAG,
-            "Exact WDL/DTM table mapped: kind=%d bytes=%zu",
-            g_table_format,bytes);
-        return true;
+    const int32_t score=dobutsu_evaluate_dense(data,bytes,opening,nullptr,0,0);
+    if(score!=-1922) {
+        ::munmap(address,bytes);
+        __android_log_print(ANDROID_LOG_ERROR,TAG,
+            "Bundled exact tablebase opening mismatch: %d",score);
+        return false;
     }
-    return false;
+    g_table_size=bytes;
+    ::madvise(address,bytes,MADV_RANDOM);
+    g_table_data.store(data,std::memory_order_release);
+    __android_log_print(ANDROID_LOG_INFO,TAG,
+        "Bundled exact WDL/DTM table mapped: bytes=%zu",bytes);
+    return true;
 }
 
 void snapshot_board(void *self) {
@@ -921,31 +902,14 @@ void snapshot_board(void *self) {
     const int zeroSide=g_model_zero_side.load(std::memory_order_acquire);
     const int sideToMove=(modelTurn>=0 && zeroSide>=0)?
         (modelTurn==0?zeroSide:1-zeroSide):-1;
-    const int32_t independentScore=dobutsu_evaluate(
-        board,hands,handN,sideToMove);
-    if(independentScore==INT32_MIN) {
-        int64_t t=now_ns();
-        if(t-g_last_board_log.exchange(t)>3'000'000'000LL)
-            __android_log_print(ANDROID_LOG_INFO,TAG,
-                "Holding mini-board: incomplete/invalid game position; cells=%zu handslots=%zu first=%d",
-                boardN,handN,board[0]);
-        return;
-    }
-    // Exact tablebase probe takes priority. The existing independent
-    // heuristic is retained only while the complete table is unavailable,
-    // the move side is unverified, or there is no matching table position.
-    int32_t evaluatedScore=independentScore;
-    bool exact=false;
-    if(sideToMove>=0 && load_verified_tablebase()) {
-        const uint8_t *tb=g_table_data.load(std::memory_order_acquire);
-        const int32_t tbScore=(g_table_format==1)?
-            dobutsu_evaluate_dense(tb,g_table_size,board,hands,handN,sideToMove):
-            dobutsu_evaluate_table_v3(tb,g_table_size,board,hands,handN,sideToMove);
-        if(tbScore!=INT32_MIN) {
-            evaluatedScore=tbScore;
-            exact=true;
-        }
-    }
+    // No fallback is permitted: an unknown side, unavailable table, or
+    // position without an exact tablebase result produces no graph sample.
+    if(sideToMove<0 || !load_verified_tablebase())return;
+    const uint8_t *tb=g_table_data.load(std::memory_order_acquire);
+    const int32_t evaluatedScore=dobutsu_evaluate_dense(
+        tb,g_table_size,board,hands,handN,sideToMove);
+    if(evaluatedScore==INT32_MIN)return;
+    constexpr bool exact=true;
     {
         std::lock_guard<std::mutex> lock(g_board_cache_mutex);
         if(g_board_cache_valid && g_hand_cached_length==handN &&
@@ -1408,6 +1372,19 @@ void on_library_loaded(const char *name, void *handle) {
     }
 }
 } // namespace
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_atuy_dobutsueval_lsposed_MiniBoardOverlay_nativeSetTablebasePath(
+        JNIEnv *env,jclass,jstring path) {
+    if(!path)return;
+    const char *value=env->GetStringUTFChars(path,nullptr);
+    if(!value)return;
+    {
+        std::lock_guard<std::mutex> lock(g_table_mutex);
+        g_table_path=value;
+    }
+    env->ReleaseStringUTFChars(path,value);
+}
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *) {
     JNIEnv *env = nullptr;
