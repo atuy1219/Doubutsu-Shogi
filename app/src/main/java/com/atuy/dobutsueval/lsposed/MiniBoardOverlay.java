@@ -21,13 +21,11 @@ import android.widget.TextView;
 import java.lang.ref.WeakReference;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -99,14 +97,17 @@ public final class MiniBoardOverlay {
         moduleApkPath = path;
     }
 
-    private static boolean hasInstalledTablebase(File table) {
+    private static boolean isVerifiedTablebase(File table) {
         if (!table.isFile() || table.length() != TABLEBASE_BYTES) return false;
-        File marker = new File(table.getParentFile(), "dobutsu.ref.sha256");
-        if (!marker.isFile()) return false;
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-                new FileInputStream(marker), StandardCharsets.US_ASCII))) {
-            return TABLEBASE_SHA256.equals(reader.readLine());
-        } catch (IOException error) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            try (InputStream input = new BufferedInputStream(new FileInputStream(table))) {
+                byte[] buffer = new byte[1024 * 1024];
+                int read;
+                while ((read = input.read(buffer)) != -1) digest.update(buffer, 0, read);
+            }
+            return TABLEBASE_SHA256.equals(hex(digest.digest()));
+        } catch (IOException | NoSuchAlgorithmException error) {
             return false;
         }
     }
@@ -125,8 +126,7 @@ public final class MiniBoardOverlay {
             Log.e(TAG, "Native tablebase path setter is unavailable", error);
         }
 
-        if (hasInstalledTablebase(table) ||
-                !TABLEBASE_INSTALLING.compareAndSet(false, true)) return;
+        if (!TABLEBASE_INSTALLING.compareAndSet(false, true)) return;
 
         final String apkPath = moduleApkPath;
         if (apkPath == null || apkPath.isEmpty()) {
@@ -138,7 +138,10 @@ public final class MiniBoardOverlay {
         Thread installer = new Thread(() -> {
             File temporary = new File(table.getParentFile(), "dobutsu.ref.installing");
             try {
-                if (hasInstalledTablebase(table)) return;
+                if (isVerifiedTablebase(table)) {
+                    Log.i(TAG, "Existing bundled WDL/DTM tablebase verified");
+                    return;
+                }
                 if (!table.getParentFile().isDirectory() &&
                         !table.getParentFile().mkdirs()) {
                     throw new IOException("Cannot create game files directory");
@@ -186,19 +189,6 @@ public final class MiniBoardOverlay {
                     throw new IOException("Cannot atomically install verified tablebase");
                 }
 
-                File marker = new File(table.getParentFile(), "dobutsu.ref.sha256");
-                File markerTemporary = new File(table.getParentFile(), "dobutsu.ref.sha256.tmp");
-                try (FileOutputStream output = new FileOutputStream(markerTemporary)) {
-                    output.write((TABLEBASE_SHA256 + "\n").getBytes(StandardCharsets.US_ASCII));
-                    output.flush();
-                    output.getFD().sync();
-                }
-                if (marker.exists() && !marker.delete()) {
-                    throw new IOException("Cannot replace tablebase integrity marker");
-                }
-                if (!markerTemporary.renameTo(marker)) {
-                    throw new IOException("Cannot install tablebase integrity marker");
-                }
                 Log.i(TAG, "Bundled exact WDL/DTM tablebase installed: " +
                         table.length() + " bytes");
             } catch (IOException | NoSuchAlgorithmException | RuntimeException error) {
