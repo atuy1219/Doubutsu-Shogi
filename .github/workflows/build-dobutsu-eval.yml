@@ -25,7 +25,6 @@ on:
   workflow_dispatch:
 
 permissions:
-  actions: read
   contents: read
 
 jobs:
@@ -39,28 +38,16 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'main' }}
-      - name: Resolve verified tablebase run
-        id: tablebase
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TABLEBASE_RUN_ID: ${{ github.event.workflow_run.id }}
+      - name: Ensure the source tree contains the fixed tablebase
         run: |
-          if [ -n "$TABLEBASE_RUN_ID" ]; then
-            run_id="$TABLEBASE_RUN_ID"
-          else
-            run_id="$(gh run list --workflow publish-tablebase.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          if [ ! -s app/src/main/assets/dobutsu.ref.gz ]; then
+            git fetch --no-tags origin main
+            mkdir -p app/src/main/assets
+            git show origin/main:app/src/main/assets/dobutsu.ref.gz > app/src/main/assets/dobutsu.ref.gz
           fi
-          test -n "$run_id" && test "$run_id" != "null"
-          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
-      - uses: actions/download-artifact@v8
-        with:
-          name: dobutsu-tablebase-verified
-          run-id: ${{ steps.tablebase.outputs.run_id }}
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          path: app/src/main/assets
-      - name: Verify complete tablebase
+      - name: Verify source tablebase
         run: |
+          test "$(stat -c %s app/src/main/assets/dobutsu.ref.gz)" -lt 100000000
           gzip -t app/src/main/assets/dobutsu.ref.gz
           actual="$(gzip -dc app/src/main/assets/dobutsu.ref.gz | sha256sum | cut -d' ' -f1)"
           test "$actual" = "95936ff86f6cc4958e39e8d98bc82fef304315985ce34a8bb26602f4d89acabb"
