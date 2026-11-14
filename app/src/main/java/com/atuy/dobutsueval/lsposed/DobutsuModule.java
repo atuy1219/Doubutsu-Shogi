@@ -62,6 +62,9 @@ public final class DobutsuModule extends XposedModule {
                     MiniBoardOverlay.class.getClassLoader());
 
             ApplicationInfo info = getModuleApplicationInfo();
+            if (info != null && info.sourceDir != null) {
+                MiniBoardOverlay.setModuleApkPath(info.sourceDir);
+            }
             if (info == null || info.nativeLibraryDir == null ||
                     info.nativeLibraryDir.isEmpty()) {
                 Log.e(TAG, "getModuleApplicationInfo missing nativeLibraryDir");
