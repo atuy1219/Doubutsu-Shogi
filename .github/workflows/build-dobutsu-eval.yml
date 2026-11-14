@@ -1,26 +1,48 @@
 name: Build Dobutsu Eval Overlay
 
 on:
+  workflow_run:
+    workflows: ["Publish Complete Dobutsu Tablebase"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
   build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - uses: actions/checkout@v7
-      - name: Download complete verified tablebase
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'main' }}
+      - name: Resolve verified tablebase run
+        id: tablebase
         env:
           GH_TOKEN: ${{ github.token }}
+          TABLEBASE_RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
-          mkdir -p app/src/main/assets
-          gh release download tablebase-v1 --repo "$GITHUB_REPOSITORY" \
-            --pattern dobutsu.ref.gz --dir app/src/main/assets
+          if [ -n "$TABLEBASE_RUN_ID" ]; then
+            run_id="$TABLEBASE_RUN_ID"
+          else
+            run_id="$(gh run list --workflow publish-tablebase.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          fi
+          test -n "$run_id" && test "$run_id" != "null"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v8
+        with:
+          name: dobutsu-tablebase-verified
+          run-id: ${{ steps.tablebase.outputs.run_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          path: app/src/main/assets
+      - name: Verify complete tablebase
+        run: |
           gzip -t app/src/main/assets/dobutsu.ref.gz
           actual="$(gzip -dc app/src/main/assets/dobutsu.ref.gz | sha256sum | cut -d' ' -f1)"
           test "$actual" = "95936ff86f6cc4958e39e8d98bc82fef304315985ce34a8bb26602f4d89acabb"
