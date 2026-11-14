@@ -1,0 +1,33 @@
+name: Rename AAPT-Sensitive Tablebase Asset
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tablebase/RENAME"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dobutsu-tablebase-asset-rename
+  cancel-in-progress: false
+
+jobs:
+  rename:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify existing compressed tablebase
+        run: |
+          test -s app/src/main/assets/dobutsu.ref.gz
+          gzip -t app/src/main/assets/dobutsu.ref.gz
+          actual="$(gzip -dc app/src/main/assets/dobutsu.ref.gz | sha256sum | cut -d' ' -f1)"
+          test "$actual" = "95936ff86f6cc4958e39e8d98bc82fef304315985ce34a8bb26602f4d89acabb"
+      - name: Rename to an AAPT-safe extension and commit
+        run: |
+          git mv app/src/main/assets/dobutsu.ref.gz app/src/main/assets/dobutsu.tablebase
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Store compressed tablebase with AAPT-safe extension"
+          git push origin HEAD:main
