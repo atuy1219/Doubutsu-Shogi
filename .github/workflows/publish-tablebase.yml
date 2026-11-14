@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
     paths:
-      - ".github/workflows/publish-tablebase.yml"
       - "tablebase/REBUILD"
   workflow_dispatch:
 
