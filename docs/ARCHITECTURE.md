@@ -32,7 +32,7 @@ The game process searches its files directory for the first valid table, in this
 2. `dobutsu.dense` (`DOBDENS1`)
 3. `dobutsu.tbx` (`DOBUTB03`)
 
-The current APK does not bundle a tablebase. The expected directory is:
+The current APK does not bundle a tablebase. Without a valid table file, the overlay displays the Rust `material_score` baseline and labels it `Rust簡易評価`. This score combines piece values, center occupancy and chick advancement; it is not a full search or WDL/DTM result. The `完全解析 WDL/DTM` label is used only after a tablebase hit. The expected directory is:
 
 ```text
 /data/user/0/jp.co.gmode.dobutsushogi/files/
