@@ -5,14 +5,14 @@ plugins {
 android {
     namespace = "com.atuy.dobutsueval"
     compileSdk = 36
-    ndkVersion = "28.2.13676358"
+    ndkVersion = "30.0.16248370"
 
     defaultConfig {
         applicationId = "com.atuy.dobutsueval"
         minSdk = 28
         targetSdk = 36
-        versionCode = 23
-        versionName = "0.7.1-lsposed102-exact-table-probe"
+        versionCode = 24
+        versionName = "0.7.2"
         ndk { abiFilters += listOf("arm64-v8a") }
         externalNativeBuild {
             cmake { cppFlags += listOf("-std=c++20", "-Wall", "-Wextra", "-Werror=return-type") }
